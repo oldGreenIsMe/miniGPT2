@@ -1,0 +1,49 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# VSCode / IDE
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# PyTorch model weights / checkpoints
+*.pth
+*.pt
+*.ckpt
+checkpoints/
+runs/
+logs/
+output/
+outputs/
+
+# Dataset
+data/
+.data/
+dataset/
+datasets/
+*.tar.gz
+*.zip
+
+# Temporary files
+tmp/
+temp/
+
+# Optional: ignore generated figures/results
+results/
+figures/generated/
