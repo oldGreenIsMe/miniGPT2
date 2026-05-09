@@ -21,16 +21,19 @@ class TrainerConfig:
     训练流程配置
     """
     batch_size: int = 32
-    max_iters: int = 5000
-    eval_interval: int = 200
-    eval_iters: int = 50
+    max_iters: int = 2000
+    eval_interval: int = 100
+    eval_iters: int = 20
     learning_rate: float = 3e-4
     weight_decay: float = 0.1
     betas: tuple = (0.9, 0.95)
     grad_clip: float = 1.0
     device: str = "cuda"
-    log_interval: int = 50
-    ckpt_path: str = "checkpoints/latest_model.pt"
+    log_interval: int = 20
+
+    latest_ckpt_path: str = "checkpoints/latest_model.pt"
+    best_ckpt_path: str = "checkpoints/best_model.pt"
+    log_path: str = "logs/train_log.csv"
 
 
 @dataclass
