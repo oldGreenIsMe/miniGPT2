@@ -50,7 +50,7 @@ def main():
         batch_size=trainer_cfg.batch_size,
     )
 
-    logits, loss = model(x, y)
+    logits, loss, _ = model(x, y)
 
     print("===== Full GPT Forward Test =====")
     print(f"x shape      : {x.shape}")

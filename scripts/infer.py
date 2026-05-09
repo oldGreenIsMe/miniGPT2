@@ -46,7 +46,7 @@ def main():
     parser.add_argument(
         "--max_new_tokens",
         type=int,
-        default=200,
+        default=50,
         help="Number of new tokens to generate",
     )
 
@@ -62,6 +62,12 @@ def main():
         type=int,
         default=10,
         help="Top-k sampling. Use 0 to disable.",
+    )
+
+    parser.add_argument(
+        "--use_cache",
+        action="store_true",
+        help="Use KV cache generation",
     )
 
     args = parser.parse_args()
@@ -100,12 +106,20 @@ def main():
 
     top_k = args.top_k if args.top_k > 0 else None
 
-    out = model.generate(
-        idx=idx,
-        max_new_tokens=args.max_new_tokens,
-        temperature=args.temperature,
-        top_k=top_k,
-    )
+    if args.use_cache:
+        out = model.generate_with_cache(
+            idx=idx,
+            max_new_tokens=args.max_new_tokens,
+            temperature=args.temperature,
+            top_k=top_k,
+        )
+    else:
+        out = model.generate(
+            idx=idx,
+            max_new_tokens=args.max_new_tokens,
+            temperature=args.temperature,
+            top_k=top_k,
+        )
 
     generated_ids = out[0].tolist()
     generated_text = dataset.decode(generated_ids)
@@ -118,6 +132,7 @@ def main():
     print(f"Max new tokens   : {args.max_new_tokens}")
     print(f"Temperature      : {args.temperature}")
     print(f"Top-k            : {top_k}")
+    print(f"Use KV cache     : {args.use_cache}")
     print("=" * 60)
     print(generated_text)
     print("=" * 60)

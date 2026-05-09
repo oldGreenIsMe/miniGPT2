@@ -1,9 +1,15 @@
+from typing import List, Optional, Tuple
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 from src.config import GPTConfig
+from src.model.attention import KVCache
 from src.model.block import Block
+
+
+PastKeyValues = List[KVCache]
 
 
 class GPT(nn.Module):
@@ -58,28 +64,45 @@ class GPT(nn.Module):
     def forward(
         self,
         idx: torch.Tensor,
-        targets: torch.Tensor | None = None,
+        targets: Optional[torch.Tensor] = None,
+        past_key_values: Optional[PastKeyValues] = None,
+        use_cache: bool = False,
     ):
         """
-        idx:     [B, T]
-        targets: [B, T] or None
+        idx:
+            no cache  : [B, T]
+            with cache: [B, T_new]
+
+        targets:
+            [B, T] or None
+
+        past_key_values:
+            None or list of length n_layer
+            each item: (past_k, past_v)
 
         return:
             logits: [B, T, vocab_size]
             loss: scalar or None
+            present_key_values: None or list of length n_layer
         """
         B, T = idx.shape
 
-        if T > self.config.block_size:
+        if past_key_values is None:
+            past_length = 0
+        else:
+            past_length = past_key_values[0][0].size(2)
+
+        if past_length + T > self.config.block_size:
             raise ValueError(
-                f"Sequence length T={T} exceeds block_size={self.config.block_size}"
+                f"past_length + T = {past_length + T} exceeds "
+                f"block_size = {self.config.block_size}"
             )
 
         tok_emb = self.token_embedding(idx)
 
         pos = torch.arange(
-            0,
-            T,
+            past_length,
+            past_length + T,
             dtype=torch.long,
             device=idx.device,
         )
@@ -88,8 +111,21 @@ class GPT(nn.Module):
         x = tok_emb + pos_emb
         x = self.drop(x)
 
-        for block in self.blocks:
-            x = block(x)
+        present_key_values = [] if use_cache else None
+
+        for layer_idx, block in enumerate(self.blocks):
+            past_kv = None
+            if past_key_values is not None:
+                past_kv = past_key_values[layer_idx]
+
+            x, present_kv = block(
+                x,
+                past_kv=past_kv,
+                use_cache=use_cache,
+            )
+
+            if use_cache:
+                present_key_values.append(present_kv)
 
         x = self.ln_f(x)
 
@@ -102,7 +138,7 @@ class GPT(nn.Module):
                 targets.reshape(-1),
             )
 
-        return logits, loss
+        return logits, loss, present_key_values
 
     @torch.no_grad()
     def generate(
@@ -110,37 +146,110 @@ class GPT(nn.Module):
         idx: torch.Tensor,
         max_new_tokens: int,
         temperature: float = 1.0,
-        top_k: int | None = None,
+        top_k: Optional[int] = None,
     ) -> torch.Tensor:
         """
+        原始无 cache 生成。
         idx: [B, T]
-
-        return:
-            idx: [B, T + max_new_tokens]
         """
         self.eval()
 
         for _ in range(max_new_tokens):
             idx_cond = idx[:, -self.config.block_size:]
 
-            logits, _ = self(idx_cond)
+            logits, _, _ = self(idx_cond)
 
             logits = logits[:, -1, :]
 
-            if temperature <= 0:
-                raise ValueError("temperature must be greater than 0")
-
-            logits = logits / temperature
-
-            if top_k is not None:
-                v, _ = torch.topk(logits, min(top_k, logits.size(-1)))
-                threshold = v[:, [-1]]
-                logits = logits.masked_fill(logits < threshold, float("-inf"))
+            logits = self._sample_logits(
+                logits=logits,
+                temperature=temperature,
+                top_k=top_k,
+            )
 
             probs = F.softmax(logits, dim=-1)
-
             idx_next = torch.multinomial(probs, num_samples=1)
 
             idx = torch.cat((idx, idx_next), dim=1)
 
         return idx
+
+    @torch.no_grad()
+    def generate_with_cache(
+        self,
+        idx: torch.Tensor,
+        max_new_tokens: int,
+        temperature: float = 1.0,
+        top_k: Optional[int] = None,
+    ) -> torch.Tensor:
+        """
+        KV cache 版本生成。
+
+        idx: [B, T_prompt]
+
+        return:
+            [B, T_prompt + max_new_tokens]
+        """
+        self.eval()
+
+        if idx.size(1) > self.config.block_size:
+            idx = idx[:, -self.config.block_size:]
+
+        logits, _, past_key_values = self(
+            idx,
+            past_key_values=None,
+            use_cache=True,
+        )
+
+        for _ in range(max_new_tokens):
+            logits_next = logits[:, -1, :]
+
+            logits_next = self._sample_logits(
+                logits=logits_next,
+                temperature=temperature,
+                top_k=top_k,
+            )
+
+            probs = F.softmax(logits_next, dim=-1)
+            idx_next = torch.multinomial(probs, num_samples=1)
+
+            idx = torch.cat((idx, idx_next), dim=1)
+
+            if idx.size(1) >= self.config.block_size:
+                # 当前这个简单 cache 实现不做 sliding cache。
+                # 达到 block_size 后停止继续扩大 cache。
+                # 后面可升级成 rolling KV cache。
+                if idx.size(1) == self.config.block_size:
+                    pass
+
+            if past_key_values[0][0].size(2) >= self.config.block_size:
+                break
+
+            logits, _, past_key_values = self(
+                idx_next,
+                past_key_values=past_key_values,
+                use_cache=True,
+            )
+
+        return idx
+
+    def _sample_logits(
+        self,
+        logits: torch.Tensor,
+        temperature: float = 1.0,
+        top_k: Optional[int] = None,
+    ) -> torch.Tensor:
+        """
+        logits: [B, vocab_size]
+        """
+        if temperature <= 0:
+            raise ValueError("temperature must be greater than 0")
+
+        logits = logits / temperature
+
+        if top_k is not None:
+            v, _ = torch.topk(logits, min(top_k, logits.size(-1)))
+            threshold = v[:, [-1]]
+            logits = logits.masked_fill(logits < threshold, float("-inf"))
+
+        return logits

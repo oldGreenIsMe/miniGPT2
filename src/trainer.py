@@ -99,7 +99,7 @@ class Trainer:
                     split=split,
                     batch_size=self.config.batch_size,
                 )
-                _, loss = self.model(x, y)
+                _, loss, _ = self.model(x, y)
                 losses[k] = loss.item()
 
             out[split] = losses.mean().item()
@@ -140,7 +140,7 @@ class Trainer:
                 batch_size=self.config.batch_size,
             )
 
-            logits, loss = self.model(x, y)
+            logits, loss, _ = self.model(x, y)
 
             self.optimizer.zero_grad(set_to_none=True)
             loss.backward()

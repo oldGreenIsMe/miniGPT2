@@ -27,7 +27,7 @@ def main():
     C = config.n_embd
 
     x = torch.randn(B, T, C)
-    y = block(x)
+    y, _ = block(x)
 
     print("===== Block Test =====")
     print(f"input x shape  : {x.shape}")

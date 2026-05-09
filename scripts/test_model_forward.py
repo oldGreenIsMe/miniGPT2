@@ -43,7 +43,7 @@ def main():
         batch_size=trainer_cfg.batch_size,
     )
 
-    logits, loss = model(x, y)
+    logits, loss, _ = model(x, y)
 
     print("===== Model Forward Test =====")
     print(f"x shape      : {x.shape}")

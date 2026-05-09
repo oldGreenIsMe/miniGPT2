@@ -1,8 +1,10 @@
+from typing import Optional, Tuple
+
 import torch
 import torch.nn as nn
 
 from src.config import GPTConfig
-from src.model.attention import CausalSelfAttention
+from src.model.attention import CausalSelfAttention, KVCache
 from src.model.mlp import MLP
 
 
@@ -10,19 +12,35 @@ class Block(nn.Module):
     def __init__(self, config: GPTConfig):
         super().__init__()
 
-        self.ln_1 = nn.LayerNorm(config.n_embd, bias=config.bias)
+        self.ln_1 = nn.LayerNorm(config.n_embd)
         self.attn = CausalSelfAttention(config)
 
-        self.ln_2 = nn.LayerNorm(config.n_embd, bias=config.bias)
+        self.ln_2 = nn.LayerNorm(config.n_embd)
         self.mlp = MLP(config)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self,
+        x: torch.Tensor,
+        past_kv: Optional[KVCache] = None,
+        use_cache: bool = False,
+    ):
         """
         x: [B, T, C]
 
+        past_kv:
+            None or (past_k, past_v)
+
         return:
             x: [B, T, C]
+            present_kv: None or (k_all, v_all)
         """
-        x = x + self.attn(self.ln_1(x))
+        attn_out, present_kv = self.attn(
+            self.ln_1(x),
+            past_kv=past_kv,
+            use_cache=use_cache,
+        )
+
+        x = x + attn_out
         x = x + self.mlp(self.ln_2(x))
-        return x
+
+        return x, present_kv
