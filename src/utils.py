@@ -1,3 +1,4 @@
+import json
 import os
 import random
 
@@ -17,6 +18,13 @@ def set_seed(seed: int):
 def ensure_dir(path: str):
     if path:
         os.makedirs(path, exist_ok=True)
+
+
+def save_json(obj: dict, path: str):
+    ensure_dir(os.path.dirname(path))
+
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(obj, f, indent=4, ensure_ascii=False)
 
 
 def count_parameters(model: torch.nn.Module):

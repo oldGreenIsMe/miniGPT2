@@ -9,31 +9,66 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 
-def main():
+def parse_args():
     parser = argparse.ArgumentParser()
+
+    parser.add_argument(
+        "--run_name",
+        type=str,
+        default=None,
+        help="Experiment run name under runs/.",
+    )
+
+    parser.add_argument(
+        "--out_dir",
+        type=str,
+        default="runs",
+        help="Root directory of experiment runs.",
+    )
 
     parser.add_argument(
         "--log_path",
         type=str,
-        default="logs/train_log.csv",
-        help="Path to training log CSV file",
+        default=None,
+        help="Path to training log CSV file.",
     )
 
     parser.add_argument(
         "--save_path",
         type=str,
-        default="outputs/loss_curve.png",
-        help="Path to save loss curve figure",
+        default=None,
+        help="Path to save loss curve figure.",
     )
 
-    args = parser.parse_args()
+    return parser.parse_args()
 
-    if not os.path.exists(args.log_path):
-        raise FileNotFoundError(f"Log file not found: {args.log_path}")
 
-    os.makedirs(os.path.dirname(args.save_path), exist_ok=True)
+def resolve_paths(args):
+    if args.run_name is not None:
+        run_dir = os.path.join(args.out_dir, args.run_name)
+        log_path = args.log_path or os.path.join(
+            run_dir, "logs", "train_log.csv"
+        )
+        save_path = args.save_path or os.path.join(
+            run_dir, "outputs", "loss_curve.png"
+        )
+    else:
+        log_path = args.log_path or "logs/train_log.csv"
+        save_path = args.save_path or "outputs/loss_curve.png"
 
-    df = pd.read_csv(args.log_path)
+    return log_path, save_path
+
+
+def main():
+    args = parse_args()
+    log_path, save_path = resolve_paths(args)
+
+    if not os.path.exists(log_path):
+        raise FileNotFoundError(f"Log file not found: {log_path}")
+
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+
+    df = pd.read_csv(log_path)
 
     required_cols = {"iter", "train_loss", "val_loss"}
     if not required_cols.issubset(df.columns):
@@ -50,7 +85,8 @@ def main():
     print("=" * 60)
     print("Training Log Summary")
     print("=" * 60)
-    print(f"Log path        : {args.log_path}")
+    print(f"Log path        : {log_path}")
+    print(f"Save path       : {save_path}")
     print(f"Num eval points : {len(df)}")
     print(f"Best iter       : {best_iter}")
     print(f"Best train loss : {best_train_loss:.4f}")
@@ -80,15 +116,19 @@ def main():
         label=f"Best Val Loss @ iter {best_iter}",
     )
 
+    title = "Mini GPT-2 Training / Validation Loss"
+    if args.run_name is not None:
+        title += f" ({args.run_name})"
+
     plt.xlabel("Iteration")
     plt.ylabel("Loss")
-    plt.title("Mini GPT-2 Training / Validation Loss")
+    plt.title(title)
     plt.legend()
     plt.grid(True)
     plt.tight_layout()
 
-    plt.savefig(args.save_path, dpi=200)
-    print(f"Saved loss curve to: {args.save_path}")
+    plt.savefig(save_path, dpi=200)
+    print(f"Saved loss curve to: {save_path}")
 
     plt.show()
 
