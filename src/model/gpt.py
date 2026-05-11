@@ -88,22 +88,24 @@ class GPT(nn.Module):
         """
         B, T = idx.shape
 
+        if T > self.config.block_size:
+            idx = idx[:, -self.config.block_size:]
+            B, T = idx.shape
+
         if past_key_values is None:
             past_length = 0
         else:
             past_length = past_key_values[0][0].size(2)
 
-        if past_length + T > self.config.block_size:
-            raise ValueError(
-                f"past_length + T = {past_length + T} exceeds "
-                f"block_size = {self.config.block_size}"
-            )
+        # rolling cache 下，past_length 可能已经等于 block_size。
+        # 当前输入 T 个 token 时，position 起点应该被压到合法范围内。
+        pos_start = min(past_length, self.config.block_size - T)
 
         tok_emb = self.token_embedding(idx)
 
         pos = torch.arange(
-            past_length,
-            past_length + T,
+            pos_start,
+            pos_start + T,
             dtype=torch.long,
             device=idx.device,
         )
@@ -189,56 +191,46 @@ class GPT(nn.Module):
         top_k: Optional[int] = None,
     ) -> torch.Tensor:
         """
-        KV cache 版本生成。
-
+        Rolling KV cache 版本生成。
+    
         idx: [B, T_prompt]
-
+    
         return:
             [B, T_prompt + max_new_tokens]
         """
         self.eval()
-
-        if idx.size(1) > self.config.block_size:
-            idx = idx[:, -self.config.block_size:]
-
+    
+        # prefill 阶段最多只使用最后 block_size 个 token 建立 cache
+        idx_cond = idx[:, -self.config.block_size:]
+    
         logits, _, past_key_values, _ = self(
-            idx,
+            idx_cond,
             past_key_values=None,
             use_cache=True,
         )
-
+    
         for _ in range(max_new_tokens):
             logits_next = logits[:, -1, :]
-
+    
             logits_next = self._sample_logits(
                 logits=logits_next,
                 temperature=temperature,
                 top_k=top_k,
             )
-
+    
             probs = F.softmax(logits_next, dim=-1)
             idx_next = torch.multinomial(probs, num_samples=1)
-
+    
             idx = torch.cat((idx, idx_next), dim=1)
-
-            if idx.size(1) >= self.config.block_size:
-                # 当前这个简单 cache 实现不做 sliding cache。
-                # 达到 block_size 后停止继续扩大 cache。
-                # 后面可升级成 rolling KV cache。
-                if idx.size(1) == self.config.block_size:
-                    pass
-
-            if past_key_values[0][0].size(2) >= self.config.block_size:
-                break
-
+    
             logits, _, past_key_values, _ = self(
                 idx_next,
                 past_key_values=past_key_values,
                 use_cache=True,
             )
-
+    
         return idx
-
+    
     def _sample_logits(
         self,
         logits: torch.Tensor,
