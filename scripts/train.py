@@ -29,6 +29,7 @@ def main():
         log_interval=20,
         latest_ckpt_path="checkpoints/latest_model.pt",
         best_ckpt_path="checkpoints/best_model.pt",
+        meta_path="checkpoints/meta.pkl",
         log_path="logs/train_log.csv",
     )
 

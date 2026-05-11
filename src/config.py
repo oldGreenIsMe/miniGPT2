@@ -3,9 +3,6 @@ from dataclasses import dataclass
 
 @dataclass
 class GPTConfig:
-    """
-    模型结构配置
-    """
     vocab_size: int
     block_size: int = 128
     n_layer: int = 4
@@ -17,9 +14,6 @@ class GPTConfig:
 
 @dataclass
 class TrainerConfig:
-    """
-    训练流程配置
-    """
     batch_size: int = 32
     max_iters: int = 2000
     eval_interval: int = 100
@@ -33,14 +27,12 @@ class TrainerConfig:
 
     latest_ckpt_path: str = "checkpoints/latest_model.pt"
     best_ckpt_path: str = "checkpoints/best_model.pt"
+    meta_path: str = "checkpoints/meta.pkl"
     log_path: str = "logs/train_log.csv"
 
 
 @dataclass
 class DataConfig:
-    """
-    数据相关配置
-    """
     data_path: str = "data/input.txt"
     train_ratio: float = 0.9
     encoding: str = "utf-8"

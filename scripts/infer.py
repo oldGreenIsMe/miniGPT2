@@ -7,23 +7,9 @@ import argparse
 
 import torch
 
-from src.config import DataConfig, GPTConfig
+from src.config import GPTConfig
 from src.dataset import CharDataset
 from src.model.gpt import GPT
-
-
-def load_dataset(data_path: str, encoding: str, block_size: int, device: str):
-    with open(data_path, "r", encoding=encoding) as f:
-        text = f.read()
-
-    dataset = CharDataset(
-        text=text,
-        block_size=block_size,
-        train_ratio=0.9,
-        device=device,
-    )
-
-    return dataset
 
 
 def main():
@@ -34,6 +20,13 @@ def main():
         type=str,
         default="checkpoints/best_model.pt",
         help="Path to checkpoint",
+    )
+
+    parser.add_argument(
+        "--meta",
+        type=str,
+        default="checkpoints/meta.pkl",
+        help="Path to tokenizer meta file",
     )
 
     parser.add_argument(
@@ -83,21 +76,15 @@ def main():
     gpt_config_dict = checkpoint["gpt_config"]
     gpt_cfg = GPTConfig(**gpt_config_dict)
 
-    data_cfg = DataConfig()
-
-    dataset = load_dataset(
-        data_path=data_cfg.data_path,
-        encoding=data_cfg.encoding,
-        block_size=gpt_cfg.block_size,
-        device=device,
-    )
+    tokenizer = CharDataset.load_tokenizer(args.meta)
 
     model = GPT(gpt_cfg)
     model.load_state_dict(checkpoint["model_state_dict"])
     model = model.to(device)
     model.eval()
 
-    prompt_ids = dataset.encode(args.prompt)
+    prompt_ids = tokenizer.encode(args.prompt)
+
     idx = torch.tensor(
         [prompt_ids],
         dtype=torch.long,
@@ -122,12 +109,13 @@ def main():
         )
 
     generated_ids = out[0].tolist()
-    generated_text = dataset.decode(generated_ids)
+    generated_text = tokenizer.decode(generated_ids)
 
     print("=" * 60)
     print("Generation Result")
     print("=" * 60)
     print(f"Checkpoint       : {args.ckpt}")
+    print(f"Tokenizer meta   : {args.meta}")
     print(f"Prompt           : {args.prompt}")
     print(f"Max new tokens   : {args.max_new_tokens}")
     print(f"Temperature      : {args.temperature}")

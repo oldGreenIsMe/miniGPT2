@@ -24,23 +24,18 @@ class Trainer:
         self.device = trainer_config.device
 
         self.model.to(self.device)
-
         self.optimizer = self.configure_optimizer()
 
         self.best_val_loss = float("inf")
 
         ensure_dir(os.path.dirname(self.config.latest_ckpt_path))
         ensure_dir(os.path.dirname(self.config.best_ckpt_path))
+        ensure_dir(os.path.dirname(self.config.meta_path))
         ensure_dir(os.path.dirname(self.config.log_path))
 
         self.init_log_file()
 
     def configure_optimizer(self):
-        """
-        GPT 类模型常见做法：
-        - Linear/Embedding 这类二维以上权重使用 weight_decay
-        - bias 和 LayerNorm 这类一维参数不使用 weight_decay
-        """
         decay_params = []
         nodecay_params = []
 
@@ -84,10 +79,6 @@ class Trainer:
 
     @torch.no_grad()
     def estimate_loss(self):
-        """
-        分别估计 train 和 val loss。
-        注意：这里不是完整遍历数据集，而是随机采 eval_iters 个 batch 求平均。
-        """
         out = {}
         self.model.eval()
 
@@ -116,11 +107,14 @@ class Trainer:
             "best_val_loss": self.best_val_loss,
             "gpt_config": asdict(self.gpt_config),
             "trainer_config": asdict(self.config),
+            "meta_path": self.config.meta_path,
         }
 
         torch.save(checkpoint, path)
 
     def train(self):
+        self.dataset.save_tokenizer(self.config.meta_path)
+
         print("=" * 60)
         print("Start Training")
         print("=" * 60)
@@ -130,6 +124,7 @@ class Trainer:
         print(f"Block size   : {self.gpt_config.block_size}")
         print(f"Eval interval: {self.config.eval_interval}")
         print(f"Log path     : {self.config.log_path}")
+        print(f"Meta path    : {self.config.meta_path}")
         print("=" * 60)
 
         self.model.train()
@@ -140,7 +135,7 @@ class Trainer:
                 batch_size=self.config.batch_size,
             )
 
-            logits, loss, _ = self.model(x, y)
+            _, loss, _ = self.model(x, y)
 
             self.optimizer.zero_grad(set_to_none=True)
             loss.backward()
