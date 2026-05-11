@@ -23,24 +23,24 @@ class Block(nn.Module):
         x: torch.Tensor,
         past_kv: Optional[KVCache] = None,
         use_cache: bool = False,
+        return_attn: bool = False,
     ):
         """
         x: [B, T, C]
-
-        past_kv:
-            None or (past_k, past_v)
-
+    
         return:
             x: [B, T, C]
             present_kv: None or (k_all, v_all)
+            att_map: None or [B, n_head, T, T_key]
         """
-        attn_out, present_kv = self.attn(
+        attn_out, present_kv, att_map = self.attn(
             self.ln_1(x),
             past_kv=past_kv,
             use_cache=use_cache,
+            return_attn=return_attn,
         )
-
+    
         x = x + attn_out
         x = x + self.mlp(self.ln_2(x))
-
-        return x, present_kv
+    
+        return x, present_kv, att_map

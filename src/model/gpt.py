@@ -67,6 +67,7 @@ class GPT(nn.Module):
         targets: Optional[torch.Tensor] = None,
         past_key_values: Optional[PastKeyValues] = None,
         use_cache: bool = False,
+        return_attn: bool = False,
     ):
         """
         idx:
@@ -112,17 +113,22 @@ class GPT(nn.Module):
         x = self.drop(x)
 
         present_key_values = [] if use_cache else None
+        all_attn_maps = [] if return_attn else None
 
         for layer_idx, block in enumerate(self.blocks):
             past_kv = None
             if past_key_values is not None:
                 past_kv = past_key_values[layer_idx]
 
-            x, present_kv = block(
+            x, present_kv, att_map = block(
                 x,
                 past_kv=past_kv,
                 use_cache=use_cache,
+                return_attn=return_attn,
             )
+
+            if return_attn:
+                all_attn_maps.append(att_map)
 
             if use_cache:
                 present_key_values.append(present_kv)
@@ -138,7 +144,7 @@ class GPT(nn.Module):
                 targets.reshape(-1),
             )
 
-        return logits, loss, present_key_values
+        return logits, loss, present_key_values, all_attn_maps
 
     @torch.no_grad()
     def generate(
@@ -157,7 +163,7 @@ class GPT(nn.Module):
         for _ in range(max_new_tokens):
             idx_cond = idx[:, -self.config.block_size:]
 
-            logits, _, _ = self(idx_cond)
+            logits, _, _, _ = self(idx_cond)
 
             logits = logits[:, -1, :]
 
@@ -195,7 +201,7 @@ class GPT(nn.Module):
         if idx.size(1) > self.config.block_size:
             idx = idx[:, -self.config.block_size:]
 
-        logits, _, past_key_values = self(
+        logits, _, past_key_values, _ = self(
             idx,
             past_key_values=None,
             use_cache=True,
@@ -225,7 +231,7 @@ class GPT(nn.Module):
             if past_key_values[0][0].size(2) >= self.config.block_size:
                 break
 
-            logits, _, past_key_values = self(
+            logits, _, past_key_values, _ = self(
                 idx_next,
                 past_key_values=past_key_values,
                 use_cache=True,
